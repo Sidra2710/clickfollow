@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ClinicFlow – No-Show Risk & Reminder Automation</title>
+<style>
+:root{--bg:#f6f8fa;--card:#fff;--tx:#14202b;--mut:#5b6b7a;--bd:#dde3ea;--ac:#0b7a75;--lo:#1a8f4c;--md:#b7791f;--hi:#c53030;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1720;--card:#17212c;--tx:#e8eef4;--mut:#9aabbb;--bd:#2a3846;--ac:#3cc4bb;--lo:#4cc97f;--md:#e0a93b;--hi:#f06a6a}}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.45}
+.wrap{max-width:1000px;margin:0 auto;padding:20px 16px 40px}
+h1{margin:0;font-size:1.5rem}.sub{color:var(--mut);margin:4px 0 18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px}
+.stat b{display:block;font-size:1.7rem}.stat span{color:var(--mut);font-size:.85rem}
+.tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}
+button,select,input,textarea{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:8px 10px}
+button{cursor:pointer}button.p{background:var(--ac);color:#fff;border-color:var(--ac)}
+.tw{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:.9rem}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--bd);white-space:nowrap}
+th{color:var(--mut);font-weight:600;cursor:pointer}
+tr.row:hover{background:rgba(11,122,117,.08);cursor:pointer} tr.row.selected{background:rgba(11,122,117,.16);outline:2px solid var(--ac);outline-offset:-2px} .status{min-height:1.3em;color:var(--mut);font-size:.85rem}.chart{display:flex;height:14px;overflow:hidden;border-radius:8px;background:var(--bd);margin:10px 0}.chart span{display:block;height:100%}.search{min-width:190px;flex:1}
+.pill{display:inline-block;padding:2px 10px;border-radius:99px;font-weight:600;font-size:.8rem;color:#fff}
+.Low{background:var(--lo)}.Medium{background:var(--md)}.High{background:var(--hi)}
+.bar{height:8px;border-radius:4px;background:var(--bd);width:90px;display:inline-block;vertical-align:middle;margin-right:6px}
+.bar i{display:block;height:100%;border-radius:4px}
+.two{display:grid;grid-template-columns:1fr;gap:12px;margin-top:16px}
+@media(min-width:760px){.two{grid-template-columns:1fr 1fr}}
+textarea{width:100%;min-height:110px}
+.msg{white-space:pre-wrap;background:var(--bg);border:1px dashed var(--bd);border-radius:8px;padding:10px;margin:8px 0}
+.note{font-size:.8rem;color:var(--mut)}ul{margin:6px 0 0 18px;padding:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>🩺 ClinicFlow</h1>
+<p class="sub">Predict appointment no-shows and auto-generate the right reminder for every patient. Demo data only – no real patient information.</p>
+
+<div class="grid" id="stats"></div>
+
+<div class="tools">
+<select id="filter"><option value="All">All risk levels</option><option>High</option><option>Medium</option><option>Low</option></select>
+<button id="bulk" class="p">Copy all reminders (visible)</button>
+<input id="search" class="search" type="search" placeholder="Search patients…" aria-label="Search patients">
+<button id="export">Export CSV</button>
+<button id="reset">Reset demo data</button>
+</div>
+
+<div class="card tw"><table>
+<thead><tr><th data-k="name">Patient</th><th data-k="type">Visit</th><th data-k="lead">Booked ahead</th><th data-k="prev">Past no-shows</th><th data-k="dist">Distance</th><th data-k="score">Risk score</th><th>Level</th></tr></thead>
+<tbody id="body"></tbody></table></div>
+
+<div class="two">
+<div class="card"><h3 style="margin-top:0">Risk distribution</h3><div id="chart" class="chart" role="img" aria-label="Risk distribution chart"></div><div id="chartLegend" class="note"></div></div>
+<div class="card"><h3 style="margin-top:0">Generated reminder</h3>
+<div id="who" class="note">Select a patient row to see their reminder and recommended action.</div>
+<div class="msg" id="msg"></div>
+<div id="act"></div>
+<label for="tone" class="note">Message tone</label> <select id="tone"><option value="supportive">Supportive</option><option value="friendly">Friendly</option><option value="formal">Formal</option></select><br><button id="copy">Copy message</button><div id="status" class="status" role="status" aria-live="polite"></div></div>
+
+<div class="card"><h3 style="margin-top:0">Add / import patients</h3>
+<p class="note">Paste CSV rows: name,age,visit(New|Follow-up|Check-up),days_booked_ahead,past_no_shows,distance_km,confirmed(yes|no)</p>
+<textarea id="csv" placeholder="Asha Rao,34,New,18,1,30,no"></textarea>
+<button id="add" class="p">Add rows</button><div id="importStatus" class="status" role="status" aria-live="polite"></div>
+<h4 style="margin-bottom:0">How the score works</h4>
+<ul class="note"><li>+15 per past no-show (max 45)</li><li>+15 if booked more than 14 days ahead (+8 if over 7)</li><li>+10 if more than 25 km away</li><li>+8 for new patients, +6 for ages under 30</li><li>−15 if the patient confirmed</li></ul>
+<p class="note">Rule-based by design so every score is explainable to clinic staff. Not medical advice.</p></div>
+</div>
+</div>
+<script>
+const DEMO=`Asha Rao,34,New,18,1,30,no
+Liam Chen,52,Follow-up,5,0,4,yes
+Priya Nair,27,Check-up,21,2,12,no
+Tom Walker,68,Follow-up,3,0,2,yes
+Sara Khan,41,New,9,0,28,no
+Mei Tanaka,23,Check-up,15,3,7,no
+Ravi Iyer,59,Follow-up,10,1,16,yes
+Emma Brown,36,Check-up,2,0,5,no`;
+const STORAGE_KEY='clinicflow-demo-v2';
+let P=[],selId=null,sortK='score',desc=true,nextId=1;
+const $=id=>document.getElementById(id);
+function parseCSV(text){
+ const lines=text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean), valid=[],errors=[];
+ lines.forEach((line,i)=>{const c=line.split(',').map(x=>x.trim()); if(c.length!==7){errors.push(`Line ${i+1}: expected 7 comma-separated fields.`);return;}
+ const [name,age,type,lead,prev,dist,confirmed]=c;
+ if(!name||![age,lead,prev,dist].every(x=>x!==''&&Number.isFinite(Number(x)))){errors.push(`Line ${i+1}: name and numeric age/booking days/no-shows/distance are required.`);return;}
+ if(Number(age)<0||Number(age)>120||Number(lead)<0||Number(prev)<0||Number(dist)<0||!Number.isInteger(Number(age))||!Number.isInteger(Number(lead))||!Number.isInteger(Number(prev))){errors.push(`Line ${i+1}: check age, days, no-shows and distance values.`);return;}
+ if(!['new','follow-up','check-up'].includes(type.toLowerCase())){errors.push(`Line ${i+1}: visit must be New, Follow-up or Check-up.`);return;}
+ if(!['yes','no','true','false'].includes(confirmed.toLowerCase())){errors.push(`Line ${i+1}: confirmed must be yes or no.`);return;}
+ valid.push({id:'p'+(nextId++),name,age:Number(age),type,lead:Number(lead),prev:Number(prev),dist:Number(dist),conf:/^(yes|true)$/i.test(confirmed)});
+ });return {valid,errors};
+}
+function score(p){let s=10+Math.min(p.prev*15,45);s+=p.lead>14?15:p.lead>7?8:0;if(p.dist>25)s+=10;if(/new/i.test(p.type))s+=8;if(p.age<30)s+=6;if(p.conf)s-=15;return Math.max(0,Math.min(100,s));}
+const lvl=s=>s<35?'Low':s<60?'Medium':'High';
+function calc(p){return {...p,s:score(p)}}
+function why(p){const r=[];if(p.prev)r.push(p.prev+' past no-show(s)');if(p.lead>14)r.push('booked more than 14 days ahead');else if(p.lead>7)r.push('booked more than 7 days ahead');if(p.dist>25)r.push('lives more than 25 km away');if(/new/i.test(p.type))r.push('new patient');if(p.age<30)r.push('under age 30');if(p.conf)r.push('already confirmed (−15)');return r.join(', ')||'no additional risk factors';}
+function msg(p){const f=p.name.split(/\s+/)[0],L=lvl(p.s),tone=$('tone').value;let text;if(L==='Low')text=`Hi ${f}, this is a friendly reminder of your ${p.type.toLowerCase()} appointment at ClinicFlow Health. See you soon!`;else if(L==='Medium')text=`Hi ${f}, your ${p.type.toLowerCase()} appointment is coming up. Please reply YES to confirm or NO if you need to reschedule.`;else text=`Hi ${f}, we want to make sure your ${p.type.toLowerCase()} appointment works for you. Please reply YES to confirm, or contact the clinic to discuss rescheduling. We're happy to help.`;if(tone==='formal')text=`Dear ${p.name}, this is a reminder regarding your ${p.type.toLowerCase()} appointment. Please confirm your attendance or contact the clinic if you need to reschedule. Thank you.`;if(tone==='friendly'&&L!=='Low')text=`Hi ${f}! Just checking in about your upcoming ${p.type.toLowerCase()} appointment. Please reply YES to confirm or let us know if you need to reschedule. Thanks!`;return text;}
+function action(p){const L=lvl(p.s);return L==='High'?'<b>Recommended:</b> staff phone call 48 hours before, offer flexible rescheduling, and consider the waitlist according to clinic policy.':L==='Medium'?'<b>Recommended:</b> SMS reminders 72 and 24 hours before, asking the patient to confirm.':'<b>Recommended:</b> one SMS reminder 24 hours before.';}
+function save(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(P));}catch(e){/* storage may be unavailable for local files */}}
+function loadDemo(){const r=parseCSV(DEMO);P=r.valid.map(calc);selId=P[0]?.id||null;nextId=Math.max(nextId,P.length+1);}
+function visiblePatients(){const f=$('filter').value,q=$('search').value.trim().toLowerCase();return P.filter(p=>(f==='All'||lvl(p.s)===f)&&(!q||p.name.toLowerCase().includes(q)||p.type.toLowerCase().includes(q)));}
+function render(){P=P.map(calc);const counts={Low:0,Medium:0,High:0};P.forEach(p=>counts[lvl(p.s)]++);const avg=P.length?Math.round(P.reduce((a,p)=>a+p.s,0)/P.length):0;
+ $('stats').innerHTML=`<div class="card stat"><b>${P.length}</b><span>Appointments</span></div><div class="card stat"><b style="color:var(--hi)">${counts.High}</b><span>High risk</span></div><div class="card stat"><b style="color:var(--md)">${counts.Medium}</b><span>Medium risk</span></div><div class="card stat"><b style="color:var(--lo)">${counts.Low}</b><span>Low risk</span></div><div class="card stat"><b>${avg}</b><span>Avg risk score</span></div>`;
+ const total=P.length||1;const colors={Low:'var(--lo)',Medium:'var(--md)',High:'var(--hi)'};$('chart').innerHTML=['Low','Medium','High'].map(k=>`<span title="${k}: ${counts[k]}" style="width:${counts[k]/total*100}%;background:${colors[k]}"></span>`).join('');$('chartLegend').textContent=`Low: ${counts.Low} · Medium: ${counts.Medium} · High: ${counts.High}`;
+ const v=visiblePatients();v.sort((a,b)=>{const k=sortK==='score'?'s':sortK;let z=typeof a[k]==='string'?a[k].localeCompare(b[k]):a[k]-b[k];return z*(desc?-1:1)});
+ const colr={Low:'var(--lo)',Medium:'var(--md)',High:'var(--hi)'};$('body').innerHTML=v.map(p=>{const L=lvl(p.s);return `<tr class="row ${p.id===selId?'selected':''}" data-id="${p.id}" tabindex="0" aria-selected="${p.id===selId}"><td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.type)}</td><td>${p.lead} d</td><td>${p.prev}</td><td>${p.dist} km</td><td><span class="bar"><i style="width:${p.s}%;background:${colr[L]}"></i></span>${p.s}</td><td><span class="pill ${L}">${L}</span></td></tr>`}).join('');
+ document.querySelectorAll('.row').forEach(r=>{const choose=()=>{selId=r.dataset.id;show();renderRowsSelection()};r.addEventListener('click',choose);r.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();choose()}})});
+ if(!P.some(p=>p.id===selId)){selId=v[0]?.id||null;}show();save();
+}
+function renderRowsSelection(){document.querySelectorAll('.row').forEach(r=>{const yes=r.dataset.id===selId;r.classList.toggle('selected',yes);r.setAttribute('aria-selected',String(yes));});show();}
+function show(){const p=P.find(x=>x.id===selId);if(!p){$('who').textContent='Select a patient row to see their reminder and recommended action.';$('msg').textContent='';$('act').textContent='';return;}$('who').textContent=`${p.name} – score ${p.s} (${lvl(p.s)}). Factors: ${why(p)}.`;$('msg').textContent=msg(p);$('act').innerHTML=`<p class="note">${action(p)}</p>`;}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+async function copyText(text,button,label){try{await navigator.clipboard.writeText(text);button.textContent='Copied ✓';$('status').textContent='Copied to clipboard.';setTimeout(()=>button.textContent=label,1500);}catch(e){$('status').textContent='Clipboard access was blocked by the browser. Select and copy the message manually.';}}
+$('filter').addEventListener('change',render);$('search').addEventListener('input',render);$('tone').addEventListener('change',show);
+document.querySelectorAll('th[data-k]').forEach(h=>h.addEventListener('click',()=>{const k=h.dataset.k;desc=sortK===k?!desc:true;sortK=k;render()}));
+$('reset').addEventListener('click',()=>{try{localStorage.removeItem(STORAGE_KEY)}catch(e){};nextId=1;loadDemo();$('filter').value='All';$('search').value='';$('csv').value='';$('importStatus').textContent='Demo data reset to the original eight appointments.';$('status').textContent='';render();});
+$('add').addEventListener('click',()=>{const result=parseCSV($('csv').value);if(!result.valid.length){$('importStatus').textContent=result.errors.length?result.errors.join(' '):'Paste at least one CSV row first.';return;}P=P.concat(result.valid.map(calc));selId=result.valid[0].id;$('csv').value='';$('importStatus').textContent=`Added ${result.valid.length} patient(s). `+(result.errors.length?`Skipped ${result.errors.length} invalid row(s): ${result.errors.join(' ')}`:'All rows passed validation.');render();});
+$('copy').addEventListener('click',e=>{const p=P.find(x=>x.id===selId);if(p)copyText($('msg').textContent,e.currentTarget,'Copy message')});
+$('bulk').addEventListener('click',e=>{const v=visiblePatients();copyText(v.map(p=>p.name+': '+msg(p)).join('\n\n'),e.currentTarget,'Copy all reminders (visible)')});
+$('export').addEventListener('click',()=>{const rows=[['name','age','visit','days_booked_ahead','past_no_shows','distance_km','confirmed','risk_score','risk_level'],...P.map(p=>[p.name,p.age,p.type,p.lead,p.prev,p.dist,p.conf?'yes':'no',p.s,lvl(p.s)])];const csv=rows.map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\r\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='clinicflow-appointments.csv';a.click();URL.revokeObjectURL(url);});
+function init(){let stored=null;try{stored=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null')}catch(e){}if(Array.isArray(stored)&&stored.length){P=stored.map(p=>({...p,id:p.id||'p'+nextId++,...calc(p)}));nextId=P.length+1;selId=P[0]?.id||null;}else loadDemo();render();}
+init();
+</script>
+</body>
+</html>
